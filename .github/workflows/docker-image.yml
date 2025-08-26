@@ -63,7 +63,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ steps.lowercase.outputs.owner }}/moontv
+          images: ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv
           tags: |
             type=ref,event=pr
             type=raw,value=latest,enable={{is_default_branch}}
@@ -84,8 +84,8 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ github.event_name == 'pull_request_target' && format('ghcr.io/{0}/moontv:pr-{1}', steps.lowercase.outputs.owner, github.event.number) || format('ghcr.io/{0}/moontv:{1}', steps.lowercase.outputs.owner, env.latest_tag || 'latest') }}
-          outputs: type=image,name=ghcr.io/${{ steps.lowercase.outputs.owner }}/moontv,name-canonical=true,push=true
+          tags: ${{ github.event_name == 'pull_request_target' && format('ghcr.io/{0}/suifengtv:pr-{1}', steps.lowercase.outputs.owner, github.event.number) || format('ghcr.io/{0}/suifengtv:{1}', steps.lowercase.outputs.owner, env.latest_tag || 'latest') }}
+          outputs: type=image,name=ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv,name-canonical=true,push=true
 
       - name: Export digest
         run: |
@@ -131,8 +131,8 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/moontv:pr-${{ github.event.number }} \
-            $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/moontv@sha256:%s ' *)
+          docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv:pr-${{ github.event.number }} \
+            $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv@sha256:%s ' *)
 
   merge:
     runs-on: ubuntu-latest
@@ -165,7 +165,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ steps.lowercase.outputs.owner }}/moontv
+          images: ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -173,11 +173,11 @@ jobs:
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/moontv@sha256:%s ' *)
+            $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv@sha256:%s ' *)
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ghcr.io/${{ steps.lowercase.outputs.owner }}/moontv:${{ steps.meta.outputs.version || 'latest' }}
+          docker buildx imagetools inspect ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv:${{ steps.meta.outputs.version || 'latest' }}
 
   pr-comment:
     runs-on: ubuntu-latest
@@ -203,7 +203,7 @@ jobs:
 
             **拉取命令：**
             \`\`\`bash
-            docker pull ghcr.io/${{ steps.lowercase.outputs.owner }}/moontv:pr-${{ github.event.number }}
+            docker pull ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv:pr-${{ github.event.number }}
             \`\`\`
 
             **标签：** \`pr-${{ github.event.number }}\`
@@ -227,6 +227,6 @@ jobs:
       - name: Refresh VERSION.txt cache
         run: |
           echo "Refreshing VERSION.txt cache..."
-          curl -s https://purge.jsdelivr.net/gh/colaxr/MoonTV/VERSION.txt
+          curl -s https://purge.jsdelivr.net/gh/colaxr/SuifengTV/VERSION.txt
           echo ""
           echo "VERSION.txt cache refreshed successfully"
