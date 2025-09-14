@@ -1,110 +1,57 @@
-name: Build & Push Docker image
+- name: Extract metadata
+  id: meta
+  uses: docker/metadata-action@v5
+  with:
+    images: ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtvn
+    tags: |
+      type=ref,event=pr
+      type=raw,value=latest,enable={{is_default_branch}}
 
-on:
-  pull_request_target:
-    branches:
-      - main
-    paths-ignore:
-      - '**.md'
-      - '.github/**'
-    types:
-      - labeled
-      - synchronize
-  workflow_run:
-    workflows: ['Release']
-    types:
-      - completed
-  workflow_dispatch:
+- name: Build and push by digest
+  id: build
+  uses: docker/build-push-action@v5
+  with:
+    context: .
+    file: ./Dockerfile
+    platforms: ${{ matrix.platform }}
+    labels: ${{ steps.meta.outputs.labels }}
+    tags: ${{ github.event_name == 'pull_request_target' && format('ghcr.io/{0}/suifengtvn:pr-{1}', steps.lowercase.outputs.owner, github.event.number) || format('ghcr.io/{0}/suifengtvn:{1}', steps.lowercase.outputs.owner, env.latest_tag || 'latest') }}
+    outputs: type=image,name=ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtvn,name-canonical=true,push=true
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+- name: Create manifest list and push
+  working-directory: /tmp/digests
+  run: |
+    docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtvn:pr-${{ github.event.number }} \
+      $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtvn@sha256:%s ' *)
 
-permissions:
-  contents: write
-  packages: write
-  actions: write
-  pull-requests: write
+- name: Create manifest list and push
+  working-directory: /tmp/digests
+  run: |
+    docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+      $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtvn@sha256:%s ' *)
 
-jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - platform: linux/amd64
-            os: ubuntu-latest
-          - platform: linux/arm64
-            os: ubuntu-24.04-arm
-    runs-on: ${{ matrix.os }}
+- name: Inspect image
+  run: |
+    docker buildx imagetools inspect ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtvn:${{ steps.meta.outputs.version || 'latest' }}
 
-    steps:
-      - name: Prepare platform name
-        run: |
-          echo "PLATFORM_NAME=${{ matrix.platform }}" | sed 's|/|-|g' >> $GITHUB_ENV
+- name: Comment on PR
+  uses: actions/github-script@v7
+  with:
+    script: |
+      github.rest.issues.createComment({
+        issue_number: context.issue.number,
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        body: `🎉 您的 PR 已构建完成！
 
-      - name: Checkout source code
-        uses: actions/checkout@v4
+      Docker 镜像已成功构建并推送到 GitHub Container Registry。
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      **拉取命令：**
+      \`\`\`bash
+      docker pull ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtvn:pr-${{ github.event.number }}
+      \`\`\`
 
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-${{ matrix.platform }}-build-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.platform }}-build-
+      **标签：** \`pr-${{ github.event.number }}\`
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.PAT_TOKEN }}   # 用 PAT 而不是 GITHUB_TOKEN
-
-      - name: Set lowercase repository owner
-        id: lowercase
-        run: echo "owner=$(echo 'colaxr' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv
-          tags: |
-            type=ref,event=pr
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Get latest tag (with default fallback)
-        run: |
-          tag=$(curl -s https://api.github.com/repos/${{ github.repository }}/tags | jq -r '.[0].name' | sed 's/^v//')
-          if [ -z "$tag" ] || [ "$tag" == "null" ]; then
-            tag="latest"
-          fi
-          echo "latest_tag=$tag" >> $GITHUB_ENV
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ github.event_name == 'pull_request_target' && format('ghcr.io/{0}/suifengtv:pr-{1}', steps.lowercase.outputs.owner, github.event.number) || format('ghcr.io/{0}/suifengtv:{1}', steps.lowercase.outputs.owner, env.latest_tag || 'latest') }}
-          outputs: type=image,name=ghcr.io/${{ steps.lowercase.outputs.owner }}/suifengtv,name-canonical=true,push=true
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{ env.PLATFORM_NAME }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
+      构建完成时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`
+      });
