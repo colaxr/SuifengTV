@@ -12,7 +12,6 @@ jobs:
   sync_latest_from_upstream:
     name: Sync latest commits from upstream repo
     runs-on: ubuntu-latest
-    if: ${{ github.event.repository.fork }}
 
     steps:
       - name: Checkout target repo
@@ -28,7 +27,7 @@ jobs:
 
       - name: Add upstream and fetch
         run: |
-          git remote add upstream https://github.com/MoonTechLab/LunaTV.git
+          git remote add upstream https://github.com/MoonTechLab/LunaTV.git || true
           git fetch upstream
 
       - name: Detect upstream default branch
@@ -37,9 +36,15 @@ jobs:
           UP_BRANCH=$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')
           echo "branch=$UP_BRANCH" >> $GITHUB_OUTPUT
 
-      - name: Merge upstream into main (ignore .github/workflows)
+      - name: Detect local default branch
+        id: local_branch
         run: |
-          git checkout main
+          LOCAL_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+          echo "branch=$LOCAL_BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Merge upstream into local default branch (ignore .github/workflows)
+        run: |
+          git checkout ${{ steps.local_branch.outputs.branch }}
           git merge upstream/${{ steps.upstream_branch.outputs.branch }} --allow-unrelated-histories --no-edit || true
           # 强制保留自己仓库的 .github/workflows
           git checkout --ours .github/workflows || true
@@ -50,7 +55,7 @@ jobs:
         env:
           TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }} main
+          git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }} ${{ steps.local_branch.outputs.branch }}
 
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@main
